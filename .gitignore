@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+grid_history.db
+model_weights/
+.DS_Store

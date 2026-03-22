@@ -675,19 +675,33 @@ class ComputingGrid:
 # GLOBAL INSTANCES
 # ============================================================================
 
-grid = ComputingGrid()
+from config.loader import load_grid_config, build_grid_from_config
+from ml.ensemble import EnsemblePredictor
+from ml.conformal import ConformalWrapper
+from ml.shap_explainer import SHAPExplainer
+from storage.sqlite_backend import SQLiteStorage
+
+config = load_grid_config("grid_config.yaml")
+grid, adapter_registry = build_grid_from_config(config)
 optimizer = GridOptimizer(grid)
-predictor = PowerPredictor()
+predictor = EnsemblePredictor()
+conformal = ConformalWrapper()
+shap_explainer = SHAPExplainer()
 
-# Initialize with default nodes
-default_nodes = [
-    NodeConfig(name="Server-1", cores=16, max_power=300),
-    NodeConfig(name="Server-2", cores=32, max_power=500),
-    NodeConfig(name="Server-3", cores=8, max_power=200),
-]
+db_path = config.get('storage', {}).get('sqlite_path', './grid_history.db')
+storage = SQLiteStorage(db_path)
 
-for node_config in default_nodes:
-    grid.add_node(node_config)
+import os
+MODE = os.environ.get("GRID_MODE", "simulated")
+print(f"Starting server in {MODE} mode...")
+
+if MODE == "pretrained":
+    try:
+        predictor.load("model_weights")
+        conformal.load("model_weights/conformal.pkl")
+        print("✓ Hot-loaded pre-trained models successfully!")
+    except Exception as e:
+        print(f"⚠️ Failed to load pre-trained models: {e}. Starting cold.")
 
 
 # ============================================================================
@@ -731,7 +745,8 @@ def inject_workload(injection: WorkloadInjection):
 
 @app.get("/history")
 def get_history(limit: int = 100):
-    return grid.history[-limit:]
+    grid_id = config.get('grid', {}).get('id', 'default-grid')
+    return storage.get_history(grid_id, limit)
 
 @app.post("/control/start")
 def start_simulation():
@@ -769,27 +784,64 @@ def get_optimizer_stats():
         "efficiency_gain_percent": (power_saved / state.unoptimized_power * 100) if state.unoptimized_power > 0 else 0
     }
 
-@app.get("/prediction", response_model=Union[PowerPrediction, Dict])
+@app.get("/prediction")
 def get_power_prediction(electricity_rate: float = 6.50):
-    """Get ML prediction with savings estimates"""
+    """Get ML prediction point estimate"""
     state = grid.get_state()
-    prediction = predictor.predict(state, electricity_rate)
+    features = predictor.online._extract_features(state)
+    point_estimate = predictor.predict(state, electricity_rate)
     
-    if not prediction:
+    if point_estimate is None:
         return {
             "message": "Model training",
-            "progress": f"{len(predictor.training_data)}/{predictor.min_training_samples}"
+            "progress": f"{predictor.samples_collected}/{predictor.min_training_samples}"
         }
-    
-    return prediction
+    return conformal.predict_with_interval(features, point_estimate)
+
+@app.get("/prediction/explain")
+def explain_prediction(electricity_rate: float = 6.50):
+    try:
+        state = grid.get_state()
+        features = predictor.online._extract_features(state)
+        point_estimate = predictor.predict(state)
+        
+        if point_estimate is None:
+            return {"message": "Model not ready yet", "samples": predictor.samples_collected}
+        
+        interval = conformal.predict_with_interval(features, point_estimate)
+        explanation = shap_explainer.explain(features, point_estimate)
+        
+        return {
+            "prediction": interval,
+            "explanation": explanation,
+            "model_status": {
+                "online_ready": predictor.online.is_ready,
+                "lstm_ready": predictor.lstm.is_ready,
+                "conformal_calibrated": conformal.is_calibrated,
+                "shap_ready": shap_explainer.is_ready,
+                "samples_collected": predictor.samples_collected
+            }
+        }
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
+
+@app.get("/prediction/interval")
+def prediction_interval():
+    state = grid.get_state()
+    features = predictor.online._extract_features(state)
+    point_estimate = predictor.predict(state)
+    if point_estimate is None:
+        return {"message": "Model not ready yet", "samples": predictor.samples_collected}
+    return conformal.predict_with_interval(features, point_estimate)
 
 @app.get("/prediction/status")
 def get_prediction_status():
     return {
         "is_trained": predictor.is_trained,
-        "samples_collected": len(predictor.training_data),
+        "samples_collected": predictor.samples_collected,
         "min_samples_needed": predictor.min_training_samples,
-        "ready": predictor.is_trained
+        "ready": predictor.is_ready
     }
 
 @app.get("/savings")
@@ -865,22 +917,57 @@ async def websocket_endpoint(websocket: WebSocket):
 async def startup_event():
     asyncio.create_task(simulation_loop())
 
+def _derive_status(node) -> str:
+    if node.temperature > 50:
+        return "critical"
+    elif node.temperature > 40:
+        return "warning"
+    elif node.load < 0.01:
+        return "sleep"
+    else:
+        return "active"
+
 async def simulation_loop():
     """Main simulation loop that runs continuously"""
     while True:
         if grid.running:
-            # 1. Physics step
-            grid.simulate_step()
-            grid.add_to_history()
+            # 1. Read all nodes via their adapters (real or simulated)
+            for node_id, node in grid.nodes.items():
+                adapter = adapter_registry.get(node_id)
+                reading = await adapter.get_reading(node)
+                
+                # Apply reading to node (only update if reading is valid)
+                if reading.reading_quality != "fault":
+                    node.load = reading.load
+                    node.temperature = reading.temperature
+                    node.power_consumption = reading.power_watts
+                    node.fan_speed = reading.fan_speed_pct
+                    node.status = _derive_status(node)
+                else:
+                    # Mark degraded but keep last known values
+                    node.status = "degraded"
             
-            # 2. Optimizer step (runs proactively)
+            # 2. Add History
+            grid.add_to_history()
+            grid_id = config.get('grid', {}).get('id', 'default-grid')
+            
+            # 3. Optimizer step (runs proactively)
             event = optimizer.run_cycle()
             
-            # 3. Collect ML training data
+            # 4. Collect ML training data
             state = grid.get_state()
+            storage.save_snapshot(grid_id, state)
+            if event:
+                storage.save_optimizer_event(grid_id, event)
+            
             predictor.collect_data_point(state)
             
-            # 4. Broadcast state to all connected clients
+            # Conformal and SHAP background data collection
+            features = predictor.online._extract_features(state)
+            conformal.add_calibration_point(features, state.total_power)
+            shap_explainer.add_background_sample(features)
+            
+            # 5. Broadcast state to all connected clients
             state_dict = state.dict()
             
             # Include optimizer event if one occurred

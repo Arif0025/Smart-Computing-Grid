@@ -1,0 +1,69 @@
+# grid_config.yaml
+# Edit this file to configure your grid. Restart the server to apply changes.
+
+grid:
+  id: "datacenter-rack-A"
+  name: "Primary Compute Rack"
+  ambient_temp: 22.0
+  electricity_rate_per_kwh: 6.50   # INR per kWh (used for cost predictions)
+  co2_factor_kg_per_kwh: 0.92      # India grid average
+
+simulation:
+  # Keep simulation running even when real adapters are active.
+  # Simulated nodes coexist with real nodes in the same grid.
+  time_step: 1.0
+  enable_natural_drift: true       # Random load variation on all nodes
+
+nodes:
+  # --- Example 1: Pure simulation node (no hardware needed) ---
+  - id: "srv-sim-001"
+    name: "Server-1 (simulated)"
+    cores: 16
+    max_power: 300
+    base_power: 90
+    cooling_efficiency: 0.10
+    thermal_mass: 1.0
+    source: simulated              # Uses SimulatedAdapter
+
+  # --- Example 2: Pure simulation node 2 ---
+  - id: "srv-sim-002"
+    name: "Server-2 (simulated)"
+    cores: 32
+    max_power: 500
+    base_power: 150
+    cooling_efficiency: 0.12
+    thermal_mass: 1.5
+    source: simulated
+
+  # --- Example 3: Pure simulation node 3 ---
+  - id: "srv-sim-003"
+    name: "Server-3 (simulated)"
+    cores: 8
+    max_power: 200
+    base_power: 60
+    cooling_efficiency: 0.08
+    thermal_mass: 0.8
+    source: simulated
+
+optimizer:
+  enabled: true
+  mode: "hybrid"                   # "thermal_only" | "balance_only" | "hybrid"
+  temp_critical: 48.0
+  temp_warning: 40.0
+  load_high: 0.85
+  max_safe_load: 0.85
+  cooldown_seconds: 0.3
+
+ml:
+  online_model: "pa_regressor"     # "pa_regressor" | "hoeffding_tree"
+  lstm_enabled: true
+  lstm_sequence_length: 60         # Seconds of history to feed the LSTM
+  ensemble_method: "dynamic"       # "dynamic" | "equal"
+  conformal_alpha: 0.10            # 90% coverage guarantee
+  shap_enabled: true
+  min_samples_before_predict: 10   # Much lower than before (online learning)
+
+storage:
+  backend: "sqlite"                # "sqlite" | "influxdb" | "memory"
+  sqlite_path: "./grid_history.db"
+  max_memory_history: 1000         # Fallback if storage backend fails

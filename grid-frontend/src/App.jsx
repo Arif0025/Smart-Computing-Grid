@@ -6,13 +6,13 @@
 // - Rupee currency (₹)
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Play, Pause, Plus, Trash2, Zap, Cpu, 
-  Thermometer, Activity, AlertTriangle, TrendingUp, Fan,
+import {
+  Play, Pause, Plus, Trash2, Zap, Cpu,
+  Thermometer, Activity, AlertTriangle, TrendingUp, Fan, ShieldCheck,
   IndianRupee, Calendar, Clock, ChevronDown, ChevronUp, Leaf, Target
 } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, AreaChart, Area, BarChart, Bar
 } from 'recharts';
 
@@ -25,7 +25,7 @@ const WS_URL = 'ws://localhost:8000/ws';
 const SmoothFan = ({ speed, isOverride }) => {
   const iconRef = useRef(null);
   const rotation = useRef(0);
-  
+
   useEffect(() => {
     let animationFrame;
     const animate = () => {
@@ -43,10 +43,10 @@ const SmoothFan = ({ speed, isOverride }) => {
   }, [speed]);
 
   return (
-    <Fan 
-      ref={iconRef} 
-      size={18} 
-      className={`transition-colors ${isOverride ? 'text-red-400' : 'text-cyan-400'}`} 
+    <Fan
+      ref={iconRef}
+      size={18}
+      className={`transition-colors ${isOverride ? 'text-red-400' : 'text-cyan-400'}`}
     />
   );
 };
@@ -59,11 +59,11 @@ const GreenSavingsCard = ({ savings, isOptimizing }) => {
 
   return (
     <div className="col-span-1 md:col-span-2 lg:col-span-2 bg-gradient-to-br from-emerald-900/50 via-green-900/30 to-emerald-800/40 backdrop-blur rounded-xl p-6 border-2 border-emerald-500/40 shadow-2xl shadow-emerald-900/50 relative overflow-hidden">
-      
+
       {/* Background Decoration */}
       <div className="absolute -right-8 -top-8 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
       <div className="absolute -left-8 -bottom-8 w-40 h-40 bg-green-500/10 rounded-full blur-3xl"></div>
-      
+
       <div className="relative z-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -155,12 +155,12 @@ const GreenSavingsCard = ({ savings, isOptimizing }) => {
           </div>
           <div className="bg-gray-700/50 h-3 rounded-full overflow-hidden flex shadow-inner">
             {/* Used portion */}
-            <div 
+            <div
               className="bg-gradient-to-r from-gray-500 to-gray-600 h-full transition-all duration-1000"
               style={{ width: `${100 - savings.efficiency_gain_percent}%` }}
             />
             {/* Saved portion */}
-            <div 
+            <div
               className="bg-gradient-to-r from-emerald-500 to-green-400 h-full transition-all duration-1000 animate-pulse shadow-lg shadow-emerald-500/50"
               style={{ width: `${savings.efficiency_gain_percent}%` }}
             />
@@ -176,65 +176,128 @@ const GreenSavingsCard = ({ savings, isOptimizing }) => {
 };
 
 // ============================================================================
-// PREDICTION COMPARISON CARD
-// ============================================================================
-const PredictionComparisonCard = ({ prediction, current, isOptimizing }) => {
-  if (!prediction) return null;
+const MLExplainabilityCard = ({ predictionData, current, isOptimizing }) => {
+  if (predictionData && predictionData.error) {
+    return (
+      <div className="bg-red-900/40 backdrop-blur rounded-xl p-5 border border-red-500/30 shadow-xl col-span-1 lg:col-span-2">
+        <h3 className="text-red-400 font-bold mb-2">Backend ML Error</h3>
+        <p className="text-xs text-red-300 font-mono break-all">{predictionData.error}</p>
+        <p className="text-[10px] text-red-500 font-mono mt-2 truncate bg-red-950/50 p-2">{predictionData.traceback}</p>
+      </div>
+    );
+  }
 
-  const accuracy = current > 0 ? (1 - Math.abs(prediction.predicted_next_hour - current) / current) * 100 : 0;
+  if (!predictionData || !predictionData.prediction) return null;
+
+  const pointPred = predictionData.prediction.prediction;
+  const lower = predictionData.prediction.lower;
+  const upper = predictionData.prediction.upper;
+  const coverage = predictionData.prediction.coverage * 100;
+  const accuracy = current > 0 ? (1 - Math.abs(pointPred - current) / current) * 100 : 0;
+  const explanation = predictionData.explanation;
+  const status = predictionData.model_status;
 
   return (
-    <div className="bg-gradient-to-br from-purple-900/30 to-indigo-900/20 backdrop-blur rounded-xl p-5 border border-purple-500/30 shadow-xl">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-purple-500/20 rounded-lg">
-          <Target className="text-purple-400" size={20} />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold">Power Forecast vs Actual</h3>
-          <p className="text-xs text-gray-400">ML prediction accuracy</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {/* Current Power */}
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-blue-500/30">
-          <div className="text-xs text-gray-400 mb-1">Current</div>
-          <div className="text-2xl font-bold text-blue-400">{current.toFixed(0)}W</div>
-          <div className="text-[10px] text-gray-500">Actual now</div>
-        </div>
-
-        {/* Predicted */}
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-purple-500/30">
-          <div className="text-xs text-gray-400 mb-1">Predicted</div>
-          <div className="text-2xl font-bold text-purple-400">
-            {prediction.predicted_next_hour.toFixed(0)}W
+    <div className="bg-gradient-to-br from-purple-900/30 to-indigo-900/20 backdrop-blur rounded-xl p-5 border border-purple-500/30 shadow-xl col-span-1 lg:col-span-2">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-purple-500/20 rounded-lg">
+            <Target className="text-purple-400" size={20} />
           </div>
-          <div className="text-[10px] text-gray-500">Next hour</div>
-        </div>
-
-        {/* Accuracy */}
-        <div className="bg-gray-800/50 rounded-lg p-3 border border-green-500/30">
-          <div className="text-xs text-gray-400 mb-1">Accuracy</div>
-          <div className="text-2xl font-bold text-green-400">{accuracy.toFixed(1)}%</div>
-          <div className="text-[10px] text-gray-500">Model confidence</div>
-        </div>
-      </div>
-
-      {/* Daily Peak Prediction */}
-      <div className="bg-gray-900/40 rounded-lg p-3 border border-orange-500/20">
-        <div className="flex justify-between items-center">
           <div>
-            <div className="text-xs text-gray-400 mb-1">Expected Daily Peak</div>
-            <div className="text-xl font-bold text-orange-400">
-              {prediction.predicted_daily_peak.toFixed(0)}W
-            </div>
+            <h3 className="text-lg font-bold">ML Prediction & Explainability</h3>
+            <p className="text-xs text-gray-400">Forecast and feature impact driving the AI</p>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-400 mb-1">Average Load</div>
-            <div className="text-xl font-bold text-gray-300">
-              {prediction.predicted_daily_avg.toFixed(0)}W
-            </div>
+        </div>
+
+        {/* ML Status badges */}
+        <div className="flex gap-2 text-[10px] font-mono">
+          <span className={`px-2 py-1 rounded border ${status.online_ready ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'}`}>Online: {status.online_ready ? 'READY' : 'TRAIN'}</span>
+          <span className={`px-2 py-1 rounded border ${status.lstm_ready ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'}`}>LSTM: {status.lstm_ready ? 'READY' : 'TRAIN'}</span>
+          <span className={`px-2 py-1 rounded border ${status.conformal_calibrated ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'}`}>Conformal: {status.conformal_calibrated ? 'CALIBRATED' : 'WAIT'}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Forecast Stats */}
+        <div className="space-y-3">
+          <div className="bg-gray-800/50 rounded-lg p-3 border border-blue-500/30">
+            <div className="text-xs text-gray-400 mb-1">Current Power</div>
+            <div className="text-2xl font-bold text-blue-400">{current.toFixed(0)}W</div>
           </div>
+
+          <div className="bg-gray-800/50 rounded-lg p-3 border border-purple-500/30 relative">
+            {predictionData.prediction.calibrated && (
+              <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                <ShieldCheck size={12} /> {coverage.toFixed(0)}% GUARANTEE
+              </div>
+            )}
+            <div className="text-xs text-gray-400 mb-1">Predicted Next Hour</div>
+            <div className="text-3xl font-bold text-purple-400">
+              {pointPred.toFixed(0)}W
+            </div>
+            {predictionData.prediction.calibrated && (
+              <div className="mt-1 text-xs text-purple-300/70">
+                Range: {lower.toFixed(0)}W — {upper.toFixed(0)}W
+              </div>
+            )}
+            {!predictionData.prediction.calibrated && (
+              <div className="mt-1 text-[10px] text-gray-500 italic">
+                Uncalibrated heuristic
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* SHAP Explanations */}
+        <div className="md:col-span-2 bg-gray-900/40 rounded-lg p-4 border border-indigo-500/20">
+          <h4 className="text-sm font-semibold text-indigo-300 mb-3 flex items-center gap-2">
+            <Cpu size={14} /> Why did the AI predict this? (SHAP Explainability)
+          </h4>
+
+          {explanation && explanation.available ? (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-300 bg-indigo-500/10 p-2 rounded border border-indigo-500/20">
+                {explanation.explanation}
+              </p>
+
+              <div className="space-y-2">
+                {explanation.top_contributors.map((contrib, idx) => (
+                  <div key={idx} className="flex flex-col gap-1">
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>{contrib.feature}</span>
+                      <span className={contrib.impact > 0 ? "text-red-400" : "text-green-400"}>
+                        {contrib.impact > 0 ? "+" : ""}{contrib.impact.toFixed(1)}W
+                      </span>
+                    </div>
+                    {/* Visual bar */}
+                    <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden flex">
+                      <div className="w-1/2 flex justify-end">
+                        {contrib.impact < 0 && (
+                          <div
+                            className="h-full bg-green-500"
+                            style={{ width: `${Math.min(100, Math.abs(contrib.impact) / 2)}%` }}
+                          />
+                        )}
+                      </div>
+                      <div className="w-1/2 flex justify-start">
+                        {contrib.impact > 0 && (
+                          <div
+                            className="h-full bg-red-500"
+                            style={{ width: `${Math.min(100, contrib.impact / 2)}%` }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-gray-500 italic">
+              Collecting background data for SHAP explanations ({status.samples_collected}/50 samples)...
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -264,9 +327,9 @@ function App() {
   const [predictionStatus, setPredictionStatus] = useState(null);
   const [savings, setSavings] = useState(null);
   const [electricityRate, setElectricityRate] = useState(6.50); // ₹ per kWh
-  
+
   const ws = useRef(null);
-  
+
   const [newNode, setNewNode] = useState({
     name: '',
     cores: 16,
@@ -276,20 +339,20 @@ function App() {
   // ============================================================================
   // WEBSOCKET & DATA FETCHING
   // ============================================================================
-  
+
   useEffect(() => {
     connectWebSocket();
     fetchInitialData();
     fetchPredictionStatus();
     fetchSavings();
-    
+
     // Poll for predictions and savings
     const interval = setInterval(() => {
       fetchPrediction();
       fetchPredictionStatus();
       fetchSavings();
     }, 10000);
-    
+
     return () => {
       if (ws.current) ws.current.close();
       clearInterval(interval);
@@ -298,12 +361,12 @@ function App() {
 
   const connectWebSocket = () => {
     ws.current = new WebSocket(WS_URL);
-    
+
     ws.current.onopen = () => console.log('✓ WebSocket connected');
-    
+
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      
+
       setNodes(data.nodes || []);
       setGridStats({
         total_power: data.total_power || 0,
@@ -311,11 +374,11 @@ function App() {
         avg_load: data.avg_load || 0,
         avg_temperature: data.avg_temperature || 0
       });
-      
+
       if (data.optimizer_event) {
         setOptEvents(prev => [data.optimizer_event, ...prev].slice(0, 20));
       }
-      
+
       setHistory(prev => {
         const newPoint = {
           time: new Date(data.timestamp).getTime(),
@@ -326,7 +389,7 @@ function App() {
         return [...prev.slice(-49), newPoint];
       });
     };
-    
+
     ws.current.onerror = (error) => console.error('WebSocket error:', error);
     ws.current.onclose = () => {
       console.log('WebSocket disconnected, reconnecting...');
@@ -352,7 +415,7 @@ function App() {
 
   const fetchPrediction = async () => {
     try {
-      const response = await fetch(`${API_BASE}/prediction?electricity_rate=${electricityRate}`);
+      const response = await fetch(`${API_BASE}/prediction/explain?electricity_rate=${electricityRate}`);
       const data = await response.json();
       if (data && !data.message) {
         setPrediction(data);
@@ -391,7 +454,7 @@ function App() {
     try {
       await fetch(`${API_BASE}/control/${endpoint}`, { method: 'POST' });
       setIsRunning(!isRunning);
-      
+
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({ type: endpoint }));
       }
@@ -402,8 +465,8 @@ function App() {
 
   const toggleOptimizer = async () => {
     try {
-      await fetch(`${API_BASE}/optimizer/toggle?enable=${!autoOptimize}`, { 
-        method: 'POST' 
+      await fetch(`${API_BASE}/optimizer/toggle?enable=${!autoOptimize}`, {
+        method: 'POST'
       });
       setAutoOptimize(!autoOptimize);
     } catch (error) {
@@ -423,7 +486,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newNode)
       });
-      
+
       setNewNode({ name: '', cores: 16, max_power: 300 });
       setShowAddNode(false);
       fetchInitialData();
@@ -481,7 +544,7 @@ function App() {
     };
     return colors[status] || 'bg-gray-500';
   };
-  
+
   const getStatusBadgeColor = (status) => {
     const colors = {
       sleep: 'bg-purple-500/10 text-purple-400 border border-purple-500/20',
@@ -511,35 +574,44 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-6">
       <div className="max-w-7xl mx-auto">
-        
+
         {/* HEADER */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
               Smart Computing Grid
             </h1>
-            <p className="text-gray-400">
-              Real-time monitoring • {nodes.length} nodes • {autoOptimize ? '🟢 AI Optimizing' : '⚪ Manual Mode'}
+            <p className="text-gray-400 flex items-center gap-4">
+              <span>Real-time monitoring • {nodes.length} nodes • {autoOptimize ? '🟢 AI Optimizing' : '⚪ Manual Mode'}</span>
+              <span className="flex items-center gap-2 border-l border-gray-600 pl-4">
+                <span className="text-sm">Electricity Rate:</span>
+                <input
+                  type="number"
+                  step="0.10"
+                  value={electricityRate}
+                  onChange={(e) => setElectricityRate(parseFloat(e.target.value))}
+                  className="w-16 px-1 py-0.5 bg-gray-700/50 border border-gray-600 rounded text-sm text-right outline-none"
+                />
+                <span className="text-sm text-gray-500">₹/kWh</span>
+              </span>
             </p>
           </div>
           <div className="flex gap-3">
             <button
               onClick={toggleSimulation}
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-lg ${
-                isRunning 
-                  ? 'bg-red-600 hover:bg-red-700 shadow-red-500/50' 
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-lg ${isRunning
+                  ? 'bg-red-600 hover:bg-red-700 shadow-red-500/50'
                   : 'bg-green-600 hover:bg-green-700 shadow-green-500/50'
-              }`}
+                }`}
             >
               {isRunning ? <><Pause size={20} />Stop</> : <><Play size={20} />Start</>}
             </button>
             <button
               onClick={toggleOptimizer}
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-lg ${
-                autoOptimize 
-                  ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/50' 
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-lg ${autoOptimize
+                  ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/50'
                   : 'bg-gray-700 hover:bg-gray-600'
-              }`}
+                }`}
             >
               <Cpu size={20} />
               {autoOptimize ? 'AI ON' : 'AI OFF'}
@@ -564,7 +636,7 @@ function App() {
                 <input
                   type="text"
                   value={newNode.name}
-                  onChange={(e) => setNewNode({...newNode, name: e.target.value})}
+                  onChange={(e) => setNewNode({ ...newNode, name: e.target.value })}
                   placeholder="Server-4"
                   className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                 />
@@ -574,7 +646,7 @@ function App() {
                 <input
                   type="number"
                   value={newNode.cores}
-                  onChange={(e) => setNewNode({...newNode, cores: parseInt(e.target.value)})}
+                  onChange={(e) => setNewNode({ ...newNode, cores: parseInt(e.target.value) })}
                   className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                 />
               </div>
@@ -583,7 +655,7 @@ function App() {
                 <input
                   type="number"
                   value={newNode.max_power}
-                  onChange={(e) => setNewNode({...newNode, max_power: parseInt(e.target.value)})}
+                  onChange={(e) => setNewNode({ ...newNode, max_power: parseInt(e.target.value) })}
                   className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                 />
               </div>
@@ -660,87 +732,13 @@ function App() {
           </div>
         </div>
 
-        {/* PREDICTION COMPARISON & MONTHLY FORECAST */}
+        {/* ML PREDICTION & SHAP EXPLAINABILITY */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Prediction vs Actual */}
-          <PredictionComparisonCard 
-            prediction={prediction} 
+          <MLExplainabilityCard
+            predictionData={prediction}
             current={gridStats.total_power}
             isOptimizing={autoOptimize}
           />
-
-          {/* Monthly Forecast */}
-          {prediction && (
-            <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/20 backdrop-blur rounded-xl p-5 border border-indigo-500/30 shadow-xl">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500/20 rounded-lg">
-                  <Calendar className="text-indigo-400" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold">Monthly Cost Forecast</h3>
-                  <p className="text-xs text-gray-400">Based on current patterns</p>
-                </div>
-                <div className="ml-auto">
-                  <input
-                    type="number"
-                    step="0.10"
-                    value={electricityRate}
-                    onChange={(e) => setElectricityRate(parseFloat(e.target.value))}
-                    className="w-24 px-3 py-1 bg-gray-700/50 border border-gray-600 rounded-lg text-sm text-right"
-                  />
-                  <div className="text-[10px] text-gray-500 text-right mt-0.5">₹/kWh</div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {/* With Optimization */}
-                <div className="bg-emerald-900/20 rounded-lg p-4 border border-emerald-500/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Leaf className="text-emerald-400" size={16} />
-                      <span className="text-sm text-emerald-300 font-semibold">With AI Optimization</span>
-                    </div>
-                    <div className="text-xs text-emerald-400/60">{prediction.predicted_monthly.toFixed(0)} kWh</div>
-                  </div>
-                  <div className="text-3xl font-bold text-emerald-300">
-                    ₹{prediction.estimated_monthly_cost.toFixed(2)}
-                  </div>
-                </div>
-
-                {/* Without Optimization */}
-                <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-600/50 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 bg-red-500/10 px-2 py-1 text-[10px] text-red-400 rounded-bl">
-                    BASELINE
-                  </div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-400">Without Optimization</span>
-                    <div className="text-xs text-gray-500">Est. consumption</div>
-                  </div>
-                  <div className="text-3xl font-bold text-gray-300 line-through opacity-60">
-                    ₹{prediction.baseline_monthly_cost.toFixed(2)}
-                  </div>
-                </div>
-
-                {/* Savings Summary */}
-                <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-lg p-4 border-2 border-green-500/40 shadow-lg shadow-green-900/30">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs text-green-300/70 mb-1">You Save Per Month</div>
-                      <div className="text-2xl font-bold text-green-300">
-                        ₹{prediction.projected_savings.toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-gray-400 mb-1">Confidence</div>
-                      <div className="text-lg font-bold text-white">
-                        {(prediction.confidence * 100).toFixed(0)}%
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Training Progress if not ready */}
           {!prediction && (
@@ -758,10 +756,10 @@ function App() {
                   <span>{predictionStatus?.samples_collected || 0} / 50 samples</span>
                 </div>
                 <div className="bg-gray-700 rounded-full h-3 overflow-hidden">
-                  <div 
+                  <div
                     className="bg-gradient-to-r from-purple-500 to-indigo-500 h-3 transition-all duration-500"
-                    style={{ 
-                      width: `${predictionStatus ? (predictionStatus.samples_collected / 50 * 100) : 0}%` 
+                    style={{
+                      width: `${predictionStatus ? (predictionStatus.samples_collected / 50 * 100) : 0}%`
                     }}
                   />
                 </div>
@@ -782,23 +780,23 @@ function App() {
                 <AreaChart data={history}>
                   <defs>
                     <linearGradient id="colorPower" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#fbbf24" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#fbbf24" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="time" hide />
                   <YAxis stroke="#9ca3af" />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }}
                     labelFormatter={(value) => new Date(value).toLocaleTimeString()}
                   />
-                  <Area 
-                    type="monotone" 
-                    dataKey="power" 
-                    stroke="#fbbf24" 
-                    fillOpacity={1} 
-                    fill="url(#colorPower)" 
+                  <Area
+                    type="monotone"
+                    dataKey="power"
+                    stroke="#fbbf24"
+                    fillOpacity={1}
+                    fill="url(#colorPower)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -811,24 +809,24 @@ function App() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="time" hide />
                   <YAxis stroke="#9ca3af" />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151' }}
                     labelFormatter={(value) => new Date(value).toLocaleTimeString()}
                   />
                   <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="load" 
-                    stroke="#10b981" 
-                    strokeWidth={2} 
+                  <Line
+                    type="monotone"
+                    dataKey="load"
+                    stroke="#10b981"
+                    strokeWidth={2}
                     dot={false}
                     name="Load (%)"
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="temp" 
-                    stroke="#ef4444" 
-                    strokeWidth={2} 
+                  <Line
+                    type="monotone"
+                    dataKey="temp"
+                    stroke="#ef4444"
+                    strokeWidth={2}
                     dot={false}
                     name="Temp (°C)"
                   />
@@ -842,7 +840,7 @@ function App() {
         {autoOptimize && (
           <div className="bg-gray-800/50 backdrop-blur rounded-xl border border-gray-700 shadow-xl mb-6 overflow-hidden">
             {/* Header */}
-            <div 
+            <div
               className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition"
               onClick={() => setShowOptLogs(!showOptLogs)}
             >
@@ -878,8 +876,8 @@ function App() {
                 ) : (
                   <div className="space-y-2">
                     {optEvents.map((event, i) => (
-                      <div 
-                        key={i} 
+                      <div
+                        key={i}
                         className={`bg-gray-900/50 rounded-lg p-3 border ${getPriorityColor(event.priority)} transition-all hover:bg-gray-900/70`}
                       >
                         {/* Header */}
@@ -999,9 +997,8 @@ function NodeCard({ node, isSelected, onSelect, onDelete, onAdjustLoad, getStatu
   return (
     <div
       onClick={onSelect}
-      className={`bg-gray-800/50 backdrop-blur rounded-xl p-5 cursor-pointer transition-all border shadow-xl hover:shadow-2xl hover:scale-[1.02] ${
-        isSelected ? 'ring-2 ring-blue-500 border-blue-500/50' : 'border-gray-700'
-      } ${node.fan_override ? 'shadow-red-900/20 border-red-500/30' : ''}`}
+      className={`bg-gray-800/50 backdrop-blur rounded-xl p-5 cursor-pointer transition-all border shadow-xl hover:shadow-2xl hover:scale-[1.02] ${isSelected ? 'ring-2 ring-blue-500 border-blue-500/50' : 'border-gray-700'
+        } ${node.fan_override ? 'shadow-red-900/20 border-red-500/30' : ''}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -1021,7 +1018,7 @@ function NodeCard({ node, isSelected, onSelect, onDelete, onAdjustLoad, getStatu
           </button>
         </div>
       </div>
-      
+
       <div className="space-y-3">
         {/* CPU Load */}
         <div>
@@ -1031,22 +1028,20 @@ function NodeCard({ node, isSelected, onSelect, onDelete, onAdjustLoad, getStatu
           </div>
           <div className="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
             <div
-              className={`h-2.5 rounded-full transition-all duration-300 shadow-lg ${
-                node.fan_override 
-                  ? 'bg-red-500 shadow-red-500/50' 
+              className={`h-2.5 rounded-full transition-all duration-300 shadow-lg ${node.fan_override
+                  ? 'bg-red-500 shadow-red-500/50'
                   : 'bg-gradient-to-r from-blue-500 to-blue-600 shadow-blue-500/50'
-              }`}
+                }`}
               style={{ width: `${node.load * 100}%` }}
             />
           </div>
         </div>
 
         {/* Fan UI */}
-        <div className={`flex items-center justify-between p-2 rounded-lg border transition-colors ${
-          node.fan_override 
-            ? 'bg-red-900/20 border-red-500/50' 
+        <div className={`flex items-center justify-between p-2 rounded-lg border transition-colors ${node.fan_override
+            ? 'bg-red-900/20 border-red-500/50'
             : 'bg-gray-700/30 border-gray-600/30'
-        }`}>
+          }`}>
           <div className="flex items-center gap-2">
             <SmoothFan speed={node.fan_speed} isOverride={node.fan_override} />
             <span className={`text-sm ${node.fan_override ? 'text-red-300 font-bold' : 'text-gray-300'}`}>
@@ -1063,11 +1058,10 @@ function NodeCard({ node, isSelected, onSelect, onDelete, onAdjustLoad, getStatu
         {/* Temperature */}
         <div className="flex justify-between items-center text-sm">
           <span className="text-gray-400">Core Temp</span>
-          <span className={`font-mono font-bold text-lg ${
-            node.temperature > 50 ? 'text-red-500' : 
-            node.temperature > 40 ? 'text-orange-400' : 
-            'text-emerald-400'
-          }`}>
+          <span className={`font-mono font-bold text-lg ${node.temperature > 50 ? 'text-red-500' :
+              node.temperature > 40 ? 'text-orange-400' :
+                'text-emerald-400'
+            }`}>
             {node.temperature.toFixed(1)}°C
           </span>
         </div>
@@ -1084,7 +1078,7 @@ function NodeCard({ node, isSelected, onSelect, onDelete, onAdjustLoad, getStatu
           </div>
         </div>
       </div>
-      
+
       {/* Controls */}
       <div className="flex gap-2 mt-4 pt-4 border-t border-gray-700">
         <button
